@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bingo Card Scanner v1.6 (PWA)</title>
+  <meta name="theme-color" content="#0b4aa2" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png" />
+  <style>
+    :root{
+      --bg:#0b1220; --panel:#111b2d; --muted:#9fb0d0; --text:#e9f0ff;
+      --accent:#4da3ff; --good:#37d67a; --warn:#ffcc66; --bad:#ff5a6a;
+      --card:#0f1930; --line:rgba(255,255,255,.10);
+    }
+    body{margin:0; font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial; background:linear-gradient(180deg,#070b14,#0b1220); color:var(--text);}
+    header{position:sticky; top:0; z-index:10; background:rgba(11,18,32,.88); backdrop-filter: blur(10px); border-bottom:1px solid var(--line);}
+    .wrap{max-width:1100px; margin:0 auto; padding:14px 14px;}
+    h1{margin:0; font-size:18px; letter-spacing:.2px;}
+    .sub{color:var(--muted); font-size:13px; margin-top:4px;}
+    .grid{display:grid; gap:12px; grid-template-columns: 380px 1fr;}
+    @media (max-width: 940px){ .grid{grid-template-columns:1fr;} }
+
+    .panel{background:rgba(17,27,45,.78); border:1px solid var(--line); border-radius:14px; padding:12px;}
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+    button, input{
+      border-radius:12px; border:1px solid var(--line);
+      background:#0c162a; color:var(--text);
+      padding:10px 12px; font-size:14px;
+    }
+    button{cursor:pointer}
+    button.primary{background:linear-gradient(180deg,#187bff,#0a55c6); border-color:rgba(255,255,255,.14);}
+    button.ghost{background:transparent}
+    button:disabled{opacity:.55; cursor:not-allowed}
+    input[type="number"]{width:120px}
+    .pill{font-size:12px; padding:5px 10px; border:1px solid var(--line); border-radius:999px; color:var(--muted); background:rgba(12,22,42,.6);}
+    .status{font-size:13px; color:var(--muted); line-height:1.35}
+    .status b{color:var(--text)}
+    .thumbs{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:10px;}
+    .thumb{
+      background:rgba(15,25,48,.7);
+      border:1px solid var(--line);
+      border-radius:12px; padding:8px;
+      display:flex; flex-direction:column; gap:6px;
+      cursor:pointer;
+    }
+    .thumb.active{outline:2px solid rgba(77,163,255,.65)}
+    .thumb img{width:100%; aspect-ratio: 4/3; object-fit:cover; border-radius:10px; border:1px solid var(--line);}
+    .thumb .tmeta{display:flex; justify-content:space-between; gap:6px; color:var(--muted); font-size:12px;}
+    .thumb .tmeta span{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+    .canvasWrap{position:relative; width:100%; border-radius:14px; overflow:hidden; border:1px solid var(--line); background:#081025;}
+    canvas{display:block; width:100%; height:auto;}
+    .overlay{position:absolute; inset:0; pointer-events:none;}
+    .cropRect{
+      position:absolute; border:2px dashed rgba(255,255,255,.75);
+      background:rgba(77,163,255,.10);
+      box-shadow: 0 0 0 9999px rgba(0,0,0,.35);
+      border-radius:10px;
+      pointer-events:auto;
+    }
+    .handle{
+      position:absolute; width:18px; height:18px; border-radius:50%;
+      background:rgba(255,255,255,.95);
+      border:2px solid rgba(77,163,255,.9);
+      box-shadow:0 4px 14px rgba(0,0,0,.4);
+      transform:translate(-50%,-50%);
+      touch-action:none;
+    }
+    .hint{color:var(--muted); font-size:12px; margin-top:8px}
+    .hr{height:1px; background:var(--line); margin:12px 0;}
+    .board{display:grid; grid-template-columns:repeat(5, 1fr); gap:8px; margin-top:10px;}
+    .cell{
+      border:1px solid var(--line);
+      background:rgba(15,25,48,.7);
+      border-radius:12px;
+      min-height:56px;
+      display:flex; align-items:center; justify-content:center;
+      font-weight:700; font-size:18px;
+      position:relative;
+    }
+    .cell.free{color:rgba(255,255,255,.85); font-size:14px; font-weight:800; letter-spacing:.6px;}
+    .cell.marked{background:rgba(55,214,122,.18); border-color:rgba(55,214,122,.55);}
+    .cell.bad{background:rgba(255,90,106,.14); border-color:rgba(255,90,106,.55);}
+.cell.sus{background:rgba(255,204,102,.12); border-color:rgba(255,204,102,.55);}
+.cell.editable{cursor:pointer;}
+.cell.editable:hover{border-color:rgba(77,163,255,.7);}
+    .cell small{position:absolute; bottom:6px; right:8px; font-size:10px; color:var(--muted); font-weight:600;}
+    .history{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
+    .chip{
+      padding:7px 10px; border-radius:999px;
+      border:1px solid var(--line);
+      background:rgba(12,22,42,.7);
+      color:var(--text);
+      font-size:13px;
+      cursor:pointer;
+    }
+    .chip:hover{border-color:rgba(77,163,255,.6)}
+    .footer{color:var(--muted); font-size:12px; margin-top:10px}
+    .spinner{
+      display:inline-block; width:14px; height:14px; border-radius:50%;
+      border:2px solid rgba(255,255,255,.25); border-top-color:rgba(255,255,255,.9);
+      animation:spin 1s linear infinite; vertical-align:-2px; margin-right:8px;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+    #installBar{
+      display:none;
+      margin-top:10px;
+      padding:10px 12px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      background:rgba(12,22,42,.7);
+      color:var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>Bingo Card Scanner v1.6 (PWA)</h1>
+      <div class="sub">Scan bingo cards (camera) + OCR. Enter called numbers by typing or voice.</div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="grid">
+      <!-- LEFT -->
+      <section class="panel">
+        <div class="row">
+          <button class="primary" id="btnCapture">📷 Scan Card</button>
+          <button class="ghost" id="btnClearAll">Reset</button>
+          <span class="pill" id="pillCount">0 cards</span>
+        </div>
+
+        <div id="installBar" class="row" style="justify-content:space-between;">
+          <div>Install this app for faster access.</div>
+          <button id="btnInstall" class="primary">Install</button>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <label class="status" style="display:flex; gap:8px; align-items:center;">
+            Called #
+            <input id="calledNum" type="number" inputmode="numeric" min="1" max="75" placeholder="1–75" />
+          </label>
+          <button id="btnCall" class="primary">Mark</button>
+          <button id="btnVoice" class="ghost">🎤 Voice</button>
+          <button id="btnUndo" class="ghost" disabled>Undo</button>
+        </div>
+
+        <div class="hint">Tip: Tap a number in history to re-apply it. Voice works best in Chrome/Edge.</div>
+
+        <div class="history" id="history"></div>
+
+        <div class="hr"></div>
+
+        <div class="status" id="statusBox">
+          <b>Status:</b> Ready. Scan a card to begin.
+        </div>
+
+        <div class="thumbs" id="thumbs"></div>
+
+        <div class="footer">© 2026 Bingo Card Scanner</div>
+      </section>
+
+      <!-- RIGHT -->
+      <section class="panel">
+        <div class="row" style="justify-content:space-between;">
+          <div class="status"><b>Selected card:</b> <span id="selLabel">None</span></div>
+          <div class="row">
+            <button id="btnCropMode" class="ghost" disabled>Crop</button>
+            <button id="btnReadOCR" class="primary" disabled>Read Numbers (OCR)</button>
+          </div>
+        </div>
+
+        <div class="canvasWrap" style="margin-top:10px;">
+          <canvas id="view" width="1280" height="960"></canvas>
+          <div class="overlay" id="overlay"></div>
+        </div>
+
+        <div class="hint">
+          Workflow: Scan → Crop (adjust box) → “Read Numbers (OCR)” → Type or speak called numbers.
+          <br/>Offline note: the app shell caches offline; the OCR library loads from a CDN (first run needs internet).
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="status"><b>Detected 5×5 grid:</b> <span style="color:var(--muted)">Tap any square to correct it.</span></div>
+        <div class="board" id="board"></div>
+      </section>
+    </div>
+  </main>
+
+  <input id="cameraInput" type="file" accept="image/*" capture="environment" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;" />
+  <script src="https://unpkg.com/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+
+  <script>
+    // ===== PWA service worker =====
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./service-worker.js").catch(()=>{});
+      });
+    }
+
+    // Install prompt
+    let deferredPrompt = null;
+    const installBar = document.getElementById("installBar");
+    const btnInstall = document.getElementById("btnInstall");
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBar.style.display = "flex";
+    });
+    btnInstall?.addEventListener("click", async () => {
+      if(!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      installBar.style.display = "none";
+    });
+
+    // ===== App state =====
+
+    const state = { cards: [], selectedId: null, calledHistory: [] };
+    const $ = sel => document.querySelector(sel);
+    const el = (tag, props={}) => Object.assign(document.createElement(tag), props);
+    function setStatus(html){ $("#statusBox").innerHTML = `<b>Status:</b> ${html}`; }
+    // Show JS errors on-screen (helps on mobile)
+    window.addEventListener("error", (e) => {
+      const msg = (e && e.message) ? e.message : "Unknown error";
+      setStatus(`<span style="color:var(--bad)"><b>App error:</b></span> ${msg}`);
+    });
+
+    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+    function fmtCardName(card){
+      const idx = state.cards.findIndex(c => c.id === card.id);
+      return `Card ${idx+1}`;
+    }
+    function countMarks(card){ return card.marked ? card.marked.size : 0; }
+
+    // ===== Canvas =====
+    const canvas = $("#view");
+    const ctx = canvas.getContext("2d");
+    let loadedImg = null;
+    let imgNatural = { w:0, h:0 };
+
+    // Keep canvas drawing size aligned with its displayed (CSS) size (fixes crop handle reach on mobile)
+    function resizeCanvasToDisplaySize() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const newW = Math.round(rect.width * dpr);
+      const newH = Math.round(rect.height * dpr);
+      if (canvas.width !== newW || canvas.height !== newH) {
+        canvas.width = newW;
+        canvas.height = newH;
+      }
+      return { cssW: rect.width, cssH: rect.height, dpr };
+    }
+
+
+    function drawEmpty(msg="No card selected."){
+      ctx.fillStyle="#081025";
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle="rgba(255,255,255,.80)";
+      ctx.font="18px system-ui";
+      ctx.fillText(msg, 20, 34);
+      ctx.fillStyle="rgba(255,255,255,.55)";
+      ctx.font="13px system-ui";
+      ctx.fillText("Scan a card on the left.", 20, 58);
+    }
+
+    function fitRect(w,h, W,H){
+      const s = Math.min(W/w, H/h);
+      const ww = Math.round(w*s), hh=Math.round(h*s);
+      return { x: Math.round((W-ww)/2), y: Math.round((H-hh)/2), w: ww, h: hh, s };
+    }
+    function imageRectToCanvasRect(r, fit){
+      const sx = fit.w / imgNatural.w;
+      const sy = fit.h / imgNatural.h;
+      return { x: fit.x + r.x*sx, y: fit.y + r.y*sy, w: r.w*sx, h: r.h*sy };
+    }
+
+    function drawGridOverlay(card, cropCanvas){
+      const cellW = cropCanvas.w / 5;
+      const cellH = cropCanvas.h / 5;
+
+      for(let r=0;r<5;r++){
+        for(let c=0;c<5;c++){
+          if(r===2 && c===2) continue;
+          const n = card.grid?.[r]?.[c];
+          if(n == null) continue;
+          if(card.marked && card.marked.has(String(n))){
+            ctx.fillStyle = "rgba(55,214,122,.22)";
+            ctx.fillRect(cropCanvas.x + c*cellW, cropCanvas.y + r*cellH, cellW, cellH);
+          }
+        }
+      }
+
+      ctx.strokeStyle = "rgba(255,255,255,.35)";
+      ctx.lineWidth = 1;
+      for(let i=0;i<=5;i++){
+        ctx.beginPath();
+        ctx.moveTo(cropCanvas.x + i*cellW, cropCanvas.y);
+        ctx.lineTo(cropCanvas.x + i*cellW, cropCanvas.y + cropCanvas.h);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(cropCanvas.x, cropCanvas.y + i*cellH);
+        ctx.lineTo(cropCanvas.x + cropCanvas.w, cropCanvas.y + i*cellH);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = "rgba(77,163,255,.85)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cropCanvas.x, cropCanvas.y, cropCanvas.w, cropCanvas.h);
+    }
+
+    function drawSelected(){
+      resizeCanvasToDisplaySize();
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      const card = state.cards.find(c=>c.id===state.selectedId);
+      if(!card){ drawEmpty(); return; }
+      const img = loadedImg;
+      if(!img){ drawEmpty("Loading image…"); return; }
+
+      const fit = fitRect(imgNatural.w, imgNatural.h, canvas.width, canvas.height);
+      ctx.fillStyle="#081025";
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(img, fit.x, fit.y, fit.w, fit.h);
+
+      if(card.grid){
+        const crop = card.crop || {x:0,y:0,w:imgNatural.w,h:imgNatural.h};
+        const cropCanvas = imageRectToCanvasRect(crop, fit);
+        drawGridOverlay(card, cropCanvas);
+      }
+    }
+
+    // ===== Thumbs / selection =====
+    function refreshThumbs(){
+      const wrap = $("#thumbs");
+      wrap.innerHTML = "";
+      state.cards.forEach(card=>{
+        const d = el("div", { className: "thumb" + (card.id===state.selectedId ? " active" : "") });
+        const img = el("img", { src: card.imgDataURL, alt: "card" });
+        const meta = el("div", { className:"tmeta" });
+        meta.append(
+          el("span",{textContent:fmtCardName(card)}),
+          el("span",{textContent: card.grid ? `OCR ✓ · ${countMarks(card)} marks` : "OCR —"})
+        );
+        d.append(img, meta);
+        d.addEventListener("click", ()=>selectCard(card.id));
+        wrap.appendChild(d);
+      });
+      $("#pillCount").textContent = `${state.cards.length} card${state.cards.length===1?"":"s"}`;
+      $("#btnCropMode").disabled = !state.selectedId;
+      $("#btnReadOCR").disabled = !state.selectedId;
+    }
+
+    async function selectCard(id){
+      state.selectedId = id;
+      const card = state.cards.find(c=>c.id===id);
+      $("#selLabel").textContent = card ? fmtCardName(card) : "None";
+      refreshThumbs();
+      await loadSelectedImage();
+      renderBoard();
+      drawSelected();
+      hideCropUI();
+    }
+
+    function renderBoard(){
+      const card = state.cards.find(c=>c.id===state.selectedId);
+      const board = $("#board");
+      board.innerHTML = "";
+      if(!card){ board.innerHTML = `<div class="hint">No card selected.</div>`; return; }
+      const grid = card.grid || Array.from({length:5}, ()=>Array(5).fill(null));
+      for(let r=0;r<5;r++){
+        for(let c=0;c<5;c++){
+          const cell = el("div", { className:"cell" });
+          if(r===2 && c===2){
+            cell.classList.add("free","marked");
+            cell.textContent = "FREE";
+            cell.appendChild(el("small",{textContent:"(center)"}));
+          } else {
+            const n = grid[r][c];
+            cell.textContent = n==null ? "—" : String(n);
+            cell.classList.add("editable");
+            // Bingo 75-ball column ranges: B 1-15, I 16-30, N 31-45, G 46-60, O 61-75
+            const ranges = [[1,15],[16,30],[31,45],[46,60],[61,75]];
+            if(n!=null){
+              const [lo,hi] = ranges[c];
+              if(n < lo || n > hi) cell.classList.add("sus");
+            }
+            if(n!=null && card.marked && card.marked.has(String(n))) cell.classList.add("marked");
+            if(n==null && card.grid) cell.classList.add("bad");
+
+            // Tap to edit (manual correction)
+            cell.addEventListener("click", ()=>{
+              const current = (n==null) ? "" : String(n);
+              const val = prompt("Edit this square (leave blank to clear):", current);
+              if(val === null) return;
+              const vv = val.trim();
+              let newNum = null;
+              if(vv){
+                const parsed = parseInt(vv,10);
+                if(Number.isFinite(parsed) && parsed>=1 && parsed<=75) newNum = parsed;
+              }
+              card.grid[r][c] = newNum;
+              // Rebuild marks for this card based on history
+              card.marked = new Set();
+              for(const s of state.calledHistory){
+                markNumberOnCard(card, parseInt(s,10));
+              }
+              refreshThumbs();
+              renderBoard();
+              drawSelected();
+            });
+          }
+          board.appendChild(cell);
+        }
+      }
+    }
+
+    // ===== Camera capture =====
+    $("#btnCapture").addEventListener("click", ()=>{
+      const inp = $("#cameraInput");
+      if(!inp) return;
+      try{
+        // Clear previous selection so selecting the same photo still triggers change
+        inp.value = "";
+        inp.click();
+      } catch(e){
+        setStatus(`<span style="color:var(--warn)"><b>Scan blocked.</b></span> Try: (1) use Chrome/Edge, (2) ensure the site is https, (3) tap again, or (4) open from a normal browser tab (not an in-app browser).`);
+      }
+    });
+    $("#cameraInput").addEventListener("change", async (e)=>{
+      const f = e.target.files && e.target.files[0];
+      if(!f) return;
+      const dataURL = await fileToDataURL(f);
+      const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random());
+      state.cards.unshift({ id, imgDataURL:dataURL, crop:null, grid:null, marked:new Set() });
+      setStatus(`Captured ${fmtCardName(state.cards[0])}. Next: <b>Crop</b> then <b>Read Numbers (OCR)</b>.`);
+      $("#cameraInput").value = "";
+      await selectCard(id);
+    });
+
+    function fileToDataURL(file){
+      return new Promise((res, rej)=>{
+        const r = new FileReader();
+        r.onload = ()=>res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+    }
+    function loadImage(src){
+      return new Promise((res, rej)=>{
+        const im = new Image();
+        im.onload = ()=>res(im);
+        im.onerror = rej;
+        im.src = src;
+      });
+    }
+    async function loadSelectedImage(){
+      const card = state.cards.find(c=>c.id===state.selectedId);
+      if(!card){ loadedImg=null; return; }
+      loadedImg = await loadImage(card.imgDataURL);
+      imgNatural.w = loadedImg.naturalWidth;
+      imgNatural.h = loadedImg.naturalHeight;
+    }
+
+    // ===== Crop UI =====
+    let cropUI = null;
+    $("#btnCropMode").addEventListener("click", ()=>{
+      if(!state.selectedId) return;
+      showCropUI();
+      setStatus(`Crop mode: drag corners to fit the card grid, then click <b>Read Numbers (OCR)</b>.`);
+    });
+
+    function hideCropUI(){
+      const overlay = $("#overlay");
+      overlay.innerHTML = "";
+      cropUI = null;
+    }
+    function showCropUI(){
+      hideCropUI();
+      const overlay = $("#overlay");
+      const rect = el("div", { className:"cropRect" });
+      overlay.appendChild(rect);
+
+      const rectCss = canvas.getBoundingClientRect();
+      const cssW = rectCss.width;
+      const cssH = rectCss.height;
+
+      const pad = Math.round(Math.min(cssW, cssH) * 0.08);
+      const r = { x: pad, y: pad, w: cssW - pad*2, h: cssH - pad*2 };
+
+      const hTL = el("div",{className:"handle"});
+      const hTR = el("div",{className:"handle"});
+      const hBR = el("div",{className:"handle"});
+      const hBL = el("div",{className:"handle"});
+      rect.append(hTL,hTR,hBR,hBL);
+
+      cropUI = { rectEl: rect, handles:[hTL,hTR,hBR,hBL], r };
+      positionCropUI();
+
+      attachHandleDrag(hTL, "tl");
+      attachHandleDrag(hTR, "tr");
+      attachHandleDrag(hBR, "br");
+      attachHandleDrag(hBL, "bl");
+    }
+    function positionCropUI(){
+      if(!cropUI) return;
+      const {rectEl, handles, r} = cropUI;
+      rectEl.style.left = r.x + "px";
+      rectEl.style.top  = r.y + "px";
+      rectEl.style.width  = r.w + "px";
+      rectEl.style.height = r.h + "px";
+      const corners = [{x:0,y:0},{x:r.w,y:0},{x:r.w,y:r.h},{x:0,y:r.h}];
+      corners.forEach((p,i)=>{ handles[i].style.left=p.x+"px"; handles[i].style.top=p.y+"px"; });
+    }
+    function attachHandleDrag(handle, which){
+      let dragging=false; let start=null;
+      const onDown=(ev)=>{
+        ev.preventDefault();
+        dragging=true;
+        const p=getPointer(ev);
+        start={p, r:{...cropUI.r}};
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp, {once:true});
+      };
+      const onMove=(ev)=>{
+        if(!dragging) return;
+        const p=getPointer(ev);
+        const dx=p.x-start.p.x, dy=p.y-start.p.y;
+        const r0=start.r;
+        let r={...cropUI.r};
+
+        if(which==="tl"){ r.x=r0.x+dx; r.y=r0.y+dy; r.w=r0.w-dx; r.h=r0.h-dy; }
+        if(which==="tr"){ r.y=r0.y+dy; r.w=r0.w+dx; r.h=r0.h-dy; }
+        if(which==="br"){ r.w=r0.w+dx; r.h=r0.h+dy; }
+        if(which==="bl"){ r.x=r0.x+dx; r.w=r0.w-dx; r.h=r0.h+dy; }
+
+        const minSize=120;
+        r.w=Math.max(minSize,r.w); r.h=Math.max(minSize,r.h);
+        const rectCss = canvas.getBoundingClientRect();
+        const cssW = rectCss.width;
+        const cssH = rectCss.height;
+
+        r.x=clamp(r.x,0,cssW-r.w);
+        r.y=clamp(r.y,0,cssH-r.h);
+
+        cropUI.r=r;
+        positionCropUI();
+      };
+      const onUp=()=>{ dragging=false; window.removeEventListener("pointermove", onMove); };
+      handle.addEventListener("pointerdown", onDown);
+    }
+    function getPointer(ev){
+      const rect = canvas.getBoundingClientRect();
+      // Return coordinates in CSS pixels (same units as the overlay crop box)
+      return {
+        x: ev.clientX - rect.left,
+        y: ev.clientY - rect.top
+      };
+    }
+
+    // ===== OCR =====
+    $("#btnReadOCR").addEventListener("click", async ()=>{
+      const card = state.cards.find(c=>c.id===state.selectedId);
+      if(!card || !loadedImg) return;
+
+      if(!cropUI){
+        showCropUI();
+        setStatus(`Crop box created. Adjust it if needed, then click <b>Read Numbers (OCR)</b> again.`);
+        return;
+      }
+
+      try{
+        $("#btnReadOCR").disabled = true;
+        $("#btnCropMode").disabled = true;
+        setStatus(`<span class="spinner"></span>Reading numbers with OCR…`);
+
+        const rectCss = canvas.getBoundingClientRect();
+        const cssW = rectCss.width;
+        const cssH = rectCss.height;
+
+        // Fit computed in CSS pixels (crop UI uses CSS pixels)
+        const fit = fitRect(imgNatural.w, imgNatural.h, cssW, cssH);
+        const rC = cropUI.r;
+
+        const sx = imgNatural.w / fit.w;
+        const sy = imgNatural.h / fit.h;
+        const imgX = (rC.x - fit.x) * sx;
+        const imgY = (rC.y - fit.y) * sy;
+        const imgW = rC.w * sx;
+        const imgH = rC.h * sy;
+
+        const crop = {
+          x: clamp(Math.round(imgX), 0, imgNatural.w-1),
+          y: clamp(Math.round(imgY), 0, imgNatural.h-1),
+          w: clamp(Math.round(imgW), 1, imgNatural.w),
+          h: clamp(Math.round(imgH), 1, imgNatural.h),
+        };
+        crop.w = Math.min(crop.w, imgNatural.w - crop.x);
+        crop.h = Math.min(crop.h, imgNatural.h - crop.y);
+        card.crop = crop;
+
+        const off = document.createElement("canvas");
+        off.width = crop.w; off.height = crop.h;
+        const octx = off.getContext("2d");
+        octx.drawImage(loadedImg, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+
+        const grid = Array.from({length:5}, ()=>Array(5).fill(null));
+        const cellW = Math.floor(crop.w / 5);
+        const cellH = Math.floor(crop.h / 5);
+
+        const worker = await Tesseract.createWorker("eng", 1, { logger: ()=>{} });
+        await worker.setParameters({
+          tessedit_char_whitelist: "0123456789",
+          tessedit_pageseg_mode: "8"
+        });
+
+        for(let r=0;r<5;r++){
+          for(let c=0;c<5;c++){
+            if(r===2 && c===2){ grid[r][c]=null; continue; }
+            const cx = c*cellW;
+            const cy = r*cellH;
+            const cw = (c===4) ? (crop.w - cx) : cellW;
+            const ch = (r===4) ? (crop.h - cy) : cellH;
+
+            // Improve OCR reliability:
+            // - Crop a bit of padding inward to avoid borders/lines
+            // - Upscale to help small fonts
+            // - Two-pass threshold if first try fails
+            const padX = Math.round(cw * 0.08);
+            const padY = Math.round(ch * 0.08);
+            const sx0 = Math.min(cw-1, padX);
+            const sy0 = Math.min(ch-1, padY);
+            const sw0 = Math.max(1, cw - padX*2);
+            const sh0 = Math.max(1, ch - padY*2);
+
+            const scale = 2;
+            const cellCanvas = document.createElement("canvas");
+            cellCanvas.width = sw0 * scale;
+            cellCanvas.height = sh0 * scale;
+            const cctx = cellCanvas.getContext("2d");
+            cctx.imageSmoothingEnabled = true;
+            cctx.imageSmoothingQuality = "high";
+            cctx.drawImage(off, cx+sx0, cy+sy0, sw0, sh0, 0, 0, cellCanvas.width, cellCanvas.height);
+
+            function thresholdCanvas(thresh){
+              const imgData = cctx.getImageData(0,0,cellCanvas.width,cellCanvas.height);
+              const d = imgData.data;
+              for(let i=0;i<d.length;i+=4){
+                const gray = (d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114);
+                const v = gray > thresh ? 255 : 0;
+                d[i]=d[i+1]=d[i+2]=v;
+              }
+              cctx.putImageData(imgData,0,0);
+            }
+
+            async function readDigits(){
+              const { data } = await worker.recognize(cellCanvas);
+              const raw = (data.text || "").trim();
+              const digits = raw.replace(/[^0-9]/g,"").trim();
+              if(!digits) return null;
+              const n = parseInt(digits, 10);
+              if(!Number.isFinite(n)) return null;
+              if(n < 1 || n > 75) return null;
+              return n;
+            }
+
+            // Pass 1
+            thresholdCanvas(170);
+            let num = await readDigits();
+
+            // Pass 2 (different threshold) if needed
+            if(num == null){
+              thresholdCanvas(210);
+              num = await readDigits();
+            }
+
+            // Column range sanity (75-ball): if out of range, leave blank so user can tap to correct.
+            const ranges = [[1,15],[16,30],[31,45],[46,60],[61,75]];
+            if(num != null){
+              const [lo,hi] = ranges[c];
+              if(num < lo || num > hi) num = null;
+            }
+
+            grid[r][c] = num;
+          }
+        }
+
+        await worker.terminate();
+        card.grid = grid;
+
+        // Reapply called history
+        card.marked = card.marked || new Set();
+        card.marked.clear();
+        for(const s of state.calledHistory){
+          markNumberOnCard(card, parseInt(s,10));
+        }
+
+        setStatus(`OCR complete for <b>${fmtCardName(card)}</b>. Now type or speak called numbers.`);
+        renderBoard();
+        drawSelected();
+        hideCropUI();
+      } catch(err){
+        console.error(err);
+        setStatus(`<span style="color:var(--bad)"><b>OCR failed.</b></span> Try better lighting, zoom, and a straighter photo.`);
+      } finally{
+        $("#btnReadOCR").disabled = !state.selectedId;
+        $("#btnCropMode").disabled = !state.selectedId;
+      }
+    });
+
+    function markNumberOnCard(card, n){
+      if(!card.grid) return;
+      const s = String(n);
+      for(let r=0;r<5;r++){
+        for(let c=0;c<5;c++){
+          if(r===2 && c===2) continue;
+          const v = card.grid[r][c];
+          if(v!=null && String(v)===s) card.marked.add(s);
+        }
+      }
+    }
+
+    // ===== Calling numbers (manual) =====
+    function applyCalledNumber(n){
+      const s = String(n);
+      if(!state.calledHistory.includes(s)){
+        state.calledHistory.unshift(s);
+        if(state.calledHistory.length>40) state.calledHistory.pop();
+      }
+      for(const card of state.cards){
+        if(!card.marked) card.marked = new Set();
+        markNumberOnCard(card, n);
+      }
+      refreshHistory();
+      renderBoard();
+      drawSelected();
+      $("#btnUndo").disabled = state.calledHistory.length===0;
+      setStatus(`Marked called number <b>${n}</b> across scanned cards.`);
+    }
+
+    $("#btnCall").addEventListener("click", ()=>{
+      const n = parseInt($("#calledNum").value, 10);
+      if(!Number.isFinite(n) || n<1 || n>75){
+        setStatus(`<span style="color:var(--warn)"><b>Please enter a number 1–75.</b></span>`);
+        return;
+      }
+      applyCalledNumber(n);
+      $("#calledNum").value = "";
+      $("#calledNum").focus();
+    });
+    $("#calledNum").addEventListener("keydown", (e)=>{ if(e.key==="Enter") $("#btnCall").click(); });
+
+    function refreshHistory(){
+      const h = $("#history");
+      h.innerHTML = "";
+      state.calledHistory.forEach(s=>{
+        const chip = el("div",{className:"chip", textContent:s});
+        chip.addEventListener("click", ()=>applyCalledNumber(parseInt(s,10)));
+        h.appendChild(chip);
+      });
+    }
+
+    $("#btnUndo").addEventListener("click", ()=>{
+      if(state.calledHistory.length===0) return;
+      const removed = state.calledHistory.shift();
+      for(const card of state.cards){ card.marked = new Set(); }
+      for(const s of state.calledHistory){
+        const n = parseInt(s,10);
+        for(const card of state.cards) markNumberOnCard(card, n);
+      }
+      refreshHistory();
+      renderBoard();
+      drawSelected();
+      $("#btnUndo").disabled = state.calledHistory.length===0;
+      setStatus(`Undid called number <b>${removed}</b>.`);
+    });
+
+    // ===== Reset =====
+    $("#btnClearAll").addEventListener("click", ()=>{
+      stopVoice();
+      state.cards = [];
+      state.selectedId = null;
+      state.calledHistory = [];
+      loadedImg = null;
+      refreshThumbs();
+      refreshHistory();
+      renderBoard();
+      drawEmpty();
+      $("#selLabel").textContent = "None";
+      $("#btnUndo").disabled = true;
+      setStatus("Reset complete. Scan a card to begin.");
+    });
+
+    // ===== Voice input (Web Speech API) =====
+    const VoiceRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognizer = null;
+    let voiceListening = false;
+
+    function isVoiceSupported(){ return !!VoiceRec; }
+    function setVoiceButton(){
+      const b = $("#btnVoice");
+      if(!b) return;
+      if(!isVoiceSupported()){
+        b.disabled = true;
+        b.textContent = "🎤 Voice (not supported)";
+        return;
+      }
+      b.disabled = false;
+      b.textContent = voiceListening ? "🛑 Stop" : "🎤 Voice";
+    }
+
+    function parseSpokenNumber(text){
+      if(!text) return null;
+      const t = text.toLowerCase().trim();
+
+      const m = t.match(/(\d{1,2})/);
+      if(m){
+        const n = parseInt(m[1], 10);
+        return (n>=1 && n<=75) ? n : null;
+      }
+
+      const ones = {
+        "zero":0,"one":1,"two":2,"three":3,"four":4,"five":5,"six":6,"seven":7,"eight":8,"nine":9,
+        "ten":10,"eleven":11,"twelve":12,"thirteen":13,"fourteen":14,"fifteen":15,"sixteen":16,"seventeen":17,"eighteen":18,"nineteen":19
+      };
+      const tens = { "twenty":20,"thirty":30,"forty":40,"fifty":50,"sixty":60,"seventy":70 };
+
+      const cleaned = t
+        .replace(/\b(number|no\.?|call|called|it is|its|bingo|letter|b|i|n|g|o)\b/g, " ")
+        .replace(/\s+/g," ")
+        .trim();
+
+      if(ones[cleaned] != null){
+        const n = ones[cleaned];
+        return (n>=1 && n<=75) ? n : null;
+      }
+
+      const parts = cleaned.split(" ").filter(Boolean);
+      if(parts.length === 2 && tens[parts[0]] != null && ones[parts[1]] != null){
+        const n = tens[parts[0]] + ones[parts[1]];
+        return (n>=1 && n<=75) ? n : null;
+      }
+      if(parts.length === 1 && tens[parts[0]] != null){
+        const n = tens[parts[0]];
+        return (n>=1 && n<=75) ? n : null;
+      }
+      return null;
+    }
+
+    function startVoice(){
+      if(!isVoiceSupported()){
+        setStatus(`<span style="color:var(--warn)"><b>Voice input isn’t supported</b> in this browser. Try Chrome/Edge.</span>`);
+        return;
+      }
+
+      recognizer = new VoiceRec();
+      recognizer.lang = "en-CA";
+      recognizer.interimResults = true;
+      recognizer.continuous = true;
+
+      recognizer.onstart = () => {
+        voiceListening = true;
+        setVoiceButton();
+        setStatus(`🎤 Listening… say a number (1–75). Example: “twenty one” or “47”.`);
+      };
+
+      recognizer.onerror = (e) => {
+        voiceListening = false;
+        setVoiceButton();
+        setStatus(`<span style="color:var(--warn)"><b>Voice error:</b></span> ${e.error || "unknown error"}.`);
+      };
+
+      recognizer.onend = () => {
+        voiceListening = false;
+        setVoiceButton();
+        setStatus(`Voice stopped. Tap 🎤 Voice to start again.`);
+      };
+
+      recognizer.onresult = (event) => {
+        const r = event.results[event.results.length - 1];
+        const best = (r && r[0] && r[0].transcript) ? r[0].transcript : "";
+        const n = parseSpokenNumber(best);
+        if(n != null){
+          if(r.isFinal){
+            applyCalledNumber(n);
+          } else {
+            setStatus(`🎤 Heard: <b>${best}</b> → (possible: ${n}) …`);
+          }
+        } else if(r.isFinal && best.trim()){
+          setStatus(`🎤 Heard: <b>${best}</b> — couldn’t find a number 1–75.`);
+        }
+      };
+
+      recognizer.start();
+    }
+
+    function stopVoice(){
+      try{ if(recognizer) recognizer.stop(); } catch(_) {}
+    }
+
+    $("#btnVoice").addEventListener("click", ()=>{
+      if(voiceListening) stopVoice();
+      else startVoice();
+    });
+    setVoiceButton();
+
+    // ===== Initial render =====
+    refreshThumbs();
+    refreshHistory();
+    renderBoard();
+    drawEmpty();
+    window.addEventListener("resize", ()=>drawSelected());
+  </script>
+</body>
+</html>
